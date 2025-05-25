@@ -1,10 +1,17 @@
 # Imports
 import sys, math, random, matplotlib.pyplot as plt, networkx as nx, numpy as np
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import (
+    QTimer, Qt
+)
+from PyQt5.QtGui import (
+    QIcon, QFont
+)
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QSizePolicy, QMessageBox
+    QLabel, QLineEdit, QSizePolicy, QMessageBox, QSpinBox,
+    QFileDialog
 )
+from adodbapi import Cursor
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.patches import Polygon
 from scipy.spatial import Voronoi
@@ -15,6 +22,7 @@ class GraphEditor(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ToC - Graph Builder")
+        self.setWindowIcon(QIcon("Icon.png"))
 
         # Initializing the graph
         self.graph = nx.Graph()
@@ -26,6 +34,7 @@ class GraphEditor(QWidget):
         self.node_radius = math.sqrt(self.node_size) * 2
         self.selected_node = None
         self.hovered_node = None
+        self.dragged_node = None
         self.node_colors = ['lightgray'] * len(self.graph.nodes)
 
         self.layout_timer = None
@@ -44,15 +53,16 @@ class GraphEditor(QWidget):
         widgets_exp_policy = QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         # Label for input form
-        self.k_label = QLabel("Colors (k):")
+        self.k_label = QLabel("Colors:")
         self.k_label.setSizePolicy(widgets_exp_policy)
         self.k_label.setMaximumWidth(250)
 
         # Input form for K
-        self.k_input = QLineEdit()
-        self.k_input.setSizePolicy(widgets_exp_policy)
-        self.k_input.setMaximumWidth(250)
-        self.k_input.setPlaceholderText(f"Enter k (Default = {self.k})")
+        self.k_input = QSpinBox()
+        self.k_input.setMinimum(1)
+        self.k_input.setMaximum(20)
+        self.k_input.setValue(5)
+        self.k_input.setFixedWidth(80)
 
         # Input button to solve the graph
         self.solve_button = QPushButton("Solve")
@@ -78,6 +88,13 @@ class GraphEditor(QWidget):
         self.map_button.setMaximumWidth(200)
         self.map_button.clicked.connect(self.draw_voronoi_map)
 
+        # Input button to load a graph from file
+        self.load_button = QPushButton("Load")
+        self.load_button.clicked.connect(self.open_file_dialog)
+
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.save_file_dialog)
+
         # Empty space taker
         dummy = QLabel("")
         dummy.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -87,6 +104,8 @@ class GraphEditor(QWidget):
         controls_layout.addWidget(self.solve_button)
         controls_layout.addWidget(self.reset_button)
         controls_layout.addWidget(self.spring_button)
+        controls_layout.addWidget(self.save_button)
+        controls_layout.addWidget(self.load_button)
         # controls_layout.addWidget(self.map_button)
         controls_layout.addWidget(dummy)
 
@@ -94,16 +113,32 @@ class GraphEditor(QWidget):
         self.figure, self.ax = plt.subplots()
         self.canvas = FigureCanvas(self.figure)
 
+        # Creating a wrapper widget
+        canvas_wrapper = QWidget()
+        canvas_layout = QVBoxLayout()
+        canvas_layout.setContentsMargins(6, 6, 6, 6)  # Creates space around the canvas
+        canvas_layout.addWidget(self.canvas)
+        canvas_wrapper.setLayout(canvas_layout)
+
+        # Style the wrapper
+        canvas_wrapper.setStyleSheet("""
+            background-color: white;
+            border: 2px solid #3498db;
+            border-radius: 6px;
+        """)
+
         # Disabling autoscale
         self.ax.axis('off')
 
         # Handlers
         self.canvas.mpl_connect("button_press_event", self.on_click)
+        self.canvas.mpl_connect("button_release_event", self.on_release)
         self.canvas.mpl_connect('motion_notify_event', self.on_hover)
+        self.canvas.mpl_connect('motion_notify_event', self.on_drag)
 
         # Combine layouts
         main_layout.addLayout(controls_layout)
-        main_layout.addWidget(self.canvas)
+        main_layout.addWidget(canvas_wrapper)
         self.setLayout(main_layout)
 
         self.draw_graph()
@@ -121,7 +156,13 @@ class GraphEditor(QWidget):
         clicked_node = self.get_node_at_position(x, y)
 
         # Left click
-        if event.button == 1 and clicked_node is not None:
+        if event.button == 1:
+            if clicked_node is not None:
+                self.dragged_node = clicked_node
+                self.setCursor(Qt.ClosedHandCursor)
+
+        # Middle click
+        if event.button == 2 and clicked_node is not None:
             # If this is the first selected node, cache it
             if self.selected_node is None:
                 self.selected_node = clicked_node
@@ -151,6 +192,25 @@ class GraphEditor(QWidget):
 
         # Redrawing the graph
         self.draw_graph()
+
+    # Handler of the on release event
+    def on_release(self, event):
+        # Right click
+        if event.button == 1:
+            self.dragged_node = None
+            self.setCursor(Qt.ArrowCursor)
+
+    # Handler of the on drag event
+    def on_drag(self, event):
+        # Moving the dragged node
+        if self.dragged_node is not None and event.inaxes:
+            # Extracting the current coordinates
+            x, y = event.xdata, event.ydata
+
+            # Moving the dragged node
+            self.graph.nodes[self.dragged_node]['pos'] = (x, y)
+
+            self.draw_graph()
 
     # Auxiliary function that enlarges hovered nodes
     def on_hover(self, event):
@@ -217,7 +277,8 @@ class GraphEditor(QWidget):
         positions = nx.get_node_attributes(self.graph, 'pos')
 
         # Initializing colors and sizes
-        colors = ['lightgray'] * len(self.graph.nodes)
+        if self.node_colors is None or len(self.node_colors) != len(self.graph.nodes):
+            self.reset_colors()
         sizes = [self.node_size] * len(self.graph.nodes)
 
         # Enlarging hovered node
@@ -255,10 +316,7 @@ class GraphEditor(QWidget):
     # Auxiliary function that solve
     def solve(self):
         # Trying to parse the user input in the k_input to an int, otherwise use default value
-        try:
-            self.k = int(self.k_input.text()) if self.k_input.text() else 3
-        except ValueError:
-            self.k = 3
+        self.k = self.k_input.value()
 
         # Initializing the SAT solver using Z3
         solver = Solver()
@@ -384,10 +442,106 @@ class GraphEditor(QWidget):
         self.ax.axis('off')
         self.canvas.draw()
 
+    # Auxiliary function that allows the user to choose a file
+    def open_file_dialog(self):
+        # Opening the window to select the file
+        path, _ = QFileDialog.getOpenFileName(self, "Open Graph", "", "Text Files (*.txt);;All Files (*)")
+        # If a valid path is selected, load the graph
+        if path:
+            self.load_graph_from_file(path)
+
+    # Input button to open a graph txt and convert it into a graph
+    def load_graph_from_file(self, path):
+        # Opening the file
+        with open(path, 'r', encoding = 'utf-8') as f:
+            lines = [line.strip() for line in f if line.strip()]
+
+        # Clearing and initialization
+        self.graph.clear()
+        section = None
+
+        # Iterating all lines in the file
+        for line in lines:
+            # Line that contains value of k
+            if line.startswith('k:'):
+                self.k = int(line.split(':')[1].strip())
+                self.k_input.setValue(self.k)  # update UI
+            # Line that signals beginning of nodes
+            elif line == 'nodes:':
+                section = 'nodes'
+            # Line the signals beginning of edges
+            elif line == 'edges:':
+                section = 'edges'
+            # Line that contains a node
+            elif section == 'nodes':
+                node_id, x, y = line.split()
+                self.graph.add_node(int(node_id), pos=(float(x), float(y)))
+            # Line that contains an edge
+            elif section == 'edges':
+                u, v = map(int, line.split())
+                self.graph.add_edge(u, v)
+
+        # Drawing graph
+        self.draw_graph()
+
+    # Auxiliary function that allows the user to save a file
+    def save_file_dialog(self):
+        # Opening the window to select the path
+        path, _ = QFileDialog.getSaveFileName(self, "Save Graph", "", "Text Files (*.txt);;All Files (*)")
+        # If a valid path is selected, save the graph
+        if path:
+            self.save_graph_to_file(path)
+
+    # Input button to generate a txt file representing the current graph setup
+    def save_graph_to_file(self, path):
+        # Opening the file
+        with open(path, 'w') as f:
+            # Writing the line that contains the k value
+            f.write(f'k: {self.k}\n')
+
+            # Line that signals the beginning of the nodes
+            f.write('nodes:\n')
+            # Writing the nodes
+            for node, (x, y) in nx.get_node_aSttributes(self.graph, 'pos').items():
+                f.write(f'{node} {x} {y}\n')
+
+            # Line that signals the beginning of the edges
+            f.write('edges:\n')
+            # Writing the edges
+            for u, v in self.graph.edges():
+                f.write(f'{u} {v}\n')
+
 # Main
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
+    # Initializing the application
+    application = QApplication(sys.argv)
+
+    # Styling the application global style sheet
+    application.setStyleSheet("""
+        QPushButton {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 6px 6px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: #2980b9;
+            cursor: 
+        }
+        QPushButton:pressed {
+            background-color: #1c639a;
+        }
+    """)
+
+    application.setFont(QFont("Segoe UI", 11))
+
+    # Initializing the graph editor
     editor = GraphEditor()
     editor.resize(1920, 1080)
     editor.show()
-    sys.exit(app.exec_())
+
+    # Signaling to the OS what needs to happens on close
+    sys.exit(application.exec_())
