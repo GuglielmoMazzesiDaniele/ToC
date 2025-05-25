@@ -1,5 +1,5 @@
 # Imports
-import sys, math, random, matplotlib.pyplot as plt, networkx as nx, numpy as np
+import sys, math, random, traceback, matplotlib.pyplot as plt, networkx as nx, numpy as np
 from PyQt5.QtCore import (
     QTimer, Qt
 )
@@ -11,9 +11,11 @@ from PyQt5.QtWidgets import (
     QLabel, QLineEdit, QSizePolicy, QMessageBox, QSpinBox,
     QFileDialog
 )
-from adodbapi import Cursor
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.patches import Polygon
+from shapely.geometry import Point
+from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon
+from shapely.ops import unary_union
 from scipy.spatial import Voronoi
 from z3 import Solver, Bool, Or, Not, sat
 
@@ -68,31 +70,31 @@ class GraphEditor(QWidget):
         self.solve_button = QPushButton("Solve")
         self.solve_button.setSizePolicy(widgets_exp_policy)
         self.solve_button.setMaximumWidth(200)
+        self.solve_button.setCursor(Qt.PointingHandCursor)
         self.solve_button.clicked.connect(self.solve)
 
         # Input button to reset the graph
         self.reset_button = QPushButton("Reset")
         self.reset_button.setSizePolicy(widgets_exp_policy)
         self.reset_button.setMaximumWidth(200)
+        self.reset_button.setCursor(Qt.PointingHandCursor)
         self.reset_button.clicked.connect(self.reset_graph)
 
         # Input button to reset the graph
         self.spring_button = QPushButton("Reorganize")
         self.spring_button.setSizePolicy(widgets_exp_policy)
+        self.spring_button.setCursor(Qt.PointingHandCursor)
         self.spring_button.setMaximumWidth(200)
         self.spring_button.clicked.connect(self.animate_spring_layout)
 
-        # Input button to generate the map
-        self.map_button = QPushButton("Map")
-        self.map_button.setSizePolicy(widgets_exp_policy)
-        self.map_button.setMaximumWidth(200)
-        self.map_button.clicked.connect(self.draw_voronoi_map)
-
         # Input button to load a graph from file
         self.load_button = QPushButton("Load")
+        self.load_button.setCursor(Qt.PointingHandCursor)
         self.load_button.clicked.connect(self.open_file_dialog)
 
+        # Input button to save a graph into a file
         self.save_button = QPushButton("Save")
+        self.save_button.setCursor(Qt.PointingHandCursor)
         self.save_button.clicked.connect(self.save_file_dialog)
 
         # Empty space taker
@@ -106,7 +108,6 @@ class GraphEditor(QWidget):
         controls_layout.addWidget(self.spring_button)
         controls_layout.addWidget(self.save_button)
         controls_layout.addWidget(self.load_button)
-        # controls_layout.addWidget(self.map_button)
         controls_layout.addWidget(dummy)
 
         # Graph canvas
@@ -126,9 +127,6 @@ class GraphEditor(QWidget):
             border: 2px solid #3498db;
             border-radius: 6px;
         """)
-
-        # Disabling autoscale
-        self.ax.axis('off')
 
         # Handlers
         self.canvas.mpl_connect("button_press_event", self.on_click)
@@ -275,6 +273,11 @@ class GraphEditor(QWidget):
 
         # Collecting the node positions
         positions = nx.get_node_attributes(self.graph, 'pos')
+
+        # Preventing mathplotlib from "zooming" into the graph composed by 1 or 2 nodes
+        if len(positions) <= 2:
+            self.ax.set_xlim(0, 1)
+            self.ax.set_ylim(0, 1)
 
         # Initializing colors and sizes
         if self.node_colors is None or len(self.node_colors) != len(self.graph.nodes):
@@ -502,7 +505,7 @@ class GraphEditor(QWidget):
             # Line that signals the beginning of the nodes
             f.write('nodes:\n')
             # Writing the nodes
-            for node, (x, y) in nx.get_node_aSttributes(self.graph, 'pos').items():
+            for node, (x, y) in nx.get_node_attributes(self.graph, 'pos').items():
                 f.write(f'{node} {x} {y}\n')
 
             # Line that signals the beginning of the edges
@@ -529,7 +532,7 @@ if __name__ == '__main__':
         }
         QPushButton:hover {
             background-color: #2980b9;
-            cursor: 
+            cursor: PointingHandCursor;
         }
         QPushButton:pressed {
             background-color: #1c639a;
@@ -540,8 +543,8 @@ if __name__ == '__main__':
 
     # Initializing the graph editor
     editor = GraphEditor()
-    editor.resize(1920, 1080)
-    editor.show()
+    # editor.resize(1920, 1080)
+    editor.showMaximized()
 
-    # Signaling to the OS what needs to happens on close
+    # Signaling to the OS what needs to happen on close
     sys.exit(application.exec_())
