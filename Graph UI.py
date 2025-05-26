@@ -109,6 +109,9 @@ class GraphEditor(QWidget):
         self.figure, self.ax = plt.subplots()
         self.canvas = FigureCanvas(self.figure)
 
+        # Disabling autoscale
+        self.ax.axis('off')
+
         # Creating a wrapper widget
         canvas_wrapper = QWidget()
         canvas_layout = QVBoxLayout()
