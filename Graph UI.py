@@ -8,7 +8,7 @@ from PyQt5.QtGui import (
 )
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QSizePolicy, QMessageBox, QSpinBox,
+    QLabel, QSizePolicy, QMessageBox, QSpinBox,
     QFileDialog
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
