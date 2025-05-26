@@ -1,5 +1,5 @@
 # Imports
-import sys, math, random, traceback, matplotlib.pyplot as plt, networkx as nx, numpy as np
+import sys, math, random, matplotlib.pyplot as plt, networkx as nx, numpy as np
 from PyQt5.QtCore import (
     QTimer, Qt
 )
@@ -13,9 +13,6 @@ from PyQt5.QtWidgets import (
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.patches import Polygon
-from shapely.geometry import Point
-from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon
-from shapely.ops import unary_union
 from scipy.spatial import Voronoi
 from z3 import Solver, Bool, Or, Not, sat
 
@@ -168,7 +165,7 @@ class GraphEditor(QWidget):
             else :
                 if self.graph.has_edge(self.selected_node, clicked_node):
                     self.graph.remove_edge(self.selected_node, clicked_node)
-                else:
+                elif self.selected_node != clicked_node:
                     self.graph.add_edge(self.selected_node, clicked_node)
                 self.selected_node = None
                 self.reset_colors()
