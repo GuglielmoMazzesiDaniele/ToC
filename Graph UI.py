@@ -1,5 +1,5 @@
 # Imports
-import sys, math, random, matplotlib.pyplot as plt, networkx as nx, numpy as np
+import sys, math, matplotlib.pyplot as plt, networkx as nx
 from PyQt5.QtCore import (
     QTimer, Qt
 )
@@ -12,8 +12,6 @@ from PyQt5.QtWidgets import (
     QFileDialog
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.patches import Polygon
-from scipy.spatial import Voronoi
 from z3 import Solver, Bool, Or, Not, sat
 
 # Main class
@@ -409,38 +407,6 @@ class GraphEditor(QWidget):
         # Verifying if the animation is complete
         if self.animation_frame > self.animation_frames:
             self.layout_timer.stop()
-
-    # Auxiliary function that converts the graph into a map
-    def draw_voronoi_map(self):
-        # Clearing the space
-        self.ax.clear()
-
-        # Extracting the positions
-        positions = nx.get_node_attributes(self.graph, 'pos')
-
-        # Converting node positions to array
-        node_indices = list(positions.keys())
-        points = np.array([positions[n] for n in node_indices])
-        vor = Voronoi(points)
-
-        # Assign default or random color per node
-        color_map = {n: random.randint(0, 9) for n in node_indices}
-
-        # Draw Voronoi regions
-        for i, region_index in enumerate(vor.point_region):
-            region = vor.regions[region_index]
-            if not -1 in region and len(region) > 0:
-                polygon = [vor.vertices[j] for j in region]
-                node = node_indices[i]
-                color_id = color_map.get(node, 0)
-                poly = Polygon(polygon, facecolor=plt.cm.tab10(color_id % 10), edgecolor='black', alpha=0.8)
-                self.ax.add_patch(poly)
-
-        self.ax.set_aspect('equal')
-        self.ax.set_xlim(points[:, 0].min() - 0.1, points[:, 0].max() + 0.1)
-        self.ax.set_ylim(points[:, 1].min() - 0.1, points[:, 1].max() + 0.1)
-        self.ax.axis('off')
-        self.canvas.draw()
 
     # Auxiliary function that allows the user to choose a file
     def open_file_dialog(self):
